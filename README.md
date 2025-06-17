@@ -12,7 +12,7 @@
 
 ## Как?
 
-Веса и параметры модели, использованные или полученные в этом проекте, доступны по ссылке на Google Drive: https://drive.google.com/drive/folders/1SfgepgKdAJE5g8FA2I6HP3axY423K_Xn?usp=sharing
+Веса и параметры модели, использованные или полученные в этом проекте, доступны по ссылке на Google Drive: https://drive.google.com/drive/folders/1ovGMDYQHxhdcZY7gNQOsJixpLzM8lHLl?usp=sharing
 
 Для запуска скачайте веса и поместите их в папку ./models/output/*
 
