@@ -1,4 +1,4 @@
-# Code taken from https://github.com/eriklindernoren/PyTorch-GAN
+# from https://github.com/eriklindernoren/PyTorch-GAN
 
 import random
 from torch.autograd import Variable

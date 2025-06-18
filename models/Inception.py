@@ -8,24 +8,23 @@ try:
 except ImportError:
     from torch.utils.model_zoo import load_url as load_state_dict_from_url
 
-# Inception weights ported to Pytorch from
-# http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz
+# Веса модели Inception, перенесенные из TensorFlow в PyTorch
+# Оригинальный источник: http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz
 FID_WEIGHTS_URL = "https://github.com/mseitzer/pytorch-fid/releases/download/fid_weights/pt_inception-2015-12-05-6726825d.pth"  # noqa: E501
 
 
 class InceptionV3(nn.Module):
-    """Pretrained InceptionV3 network returning feature maps"""
+    """Предобученная сеть InceptionV3, возвращающая карты признаков"""
 
-    # Index of default block of inception to return,
-    # corresponds to output of final average pooling
+    # Индекс блока по умолчанию для возврата (соответствует выходу последнего avg pooling)
     DEFAULT_BLOCK_INDEX = 3
 
-    # Maps feature dimensionality to their output blocks indices
+    # Соответствие размерности признаков индексам выходных блоков
     BLOCK_INDEX_BY_DIM = {
-        64: 0,  # First max pooling features
-        192: 1,  # Second max pooling featurs
-        768: 2,  # Pre-aux classifier features
-        2048: 3,  # Final average pooling features
+        64: 0,   # Признаки после первого max pooling
+        192: 1,  # Признаки после второго max pooling
+        768: 2,  # Признаки перед вспомогательным классификатором
+        2048: 3, # Признаки после финального avg pooling
     }
 
     def __init__(
@@ -36,44 +35,42 @@ class InceptionV3(nn.Module):
         requires_grad=False,
         use_fid_inception=True,
     ):
-        """Build pretrained InceptionV3
+        """Инициализация предобученной модели InceptionV3
 
-        Parameters
+        Параметры
         ----------
         output_blocks : list of int
-            Indices of blocks to return features of. Possible values are:
-                - 0: corresponds to output of first max pooling
-                - 1: corresponds to output of second max pooling
-                - 2: corresponds to output which is fed to aux classifier
-                - 3: corresponds to output of final average pooling
+            Индексы блоков, признаки которых нужно возвращать. Возможные значения:
+                - 0: выход первого max pooling
+                - 1: выход второго max pooling
+                - 2: выход перед вспомогательным классификатором
+                - 3: выход финального avg pooling
         resize_input : bool
-            If true, bilinearly resizes input to width and height 299 before
-            feeding input to model. As the network without fully connected
-            layers is fully convolutional, it should be able to handle inputs
-            of arbitrary size, so resizing might not be strictly needed
+            Если True, входное изображение билинейно масштабируется до 299x299 пикселей
+            перед подачей в модель. Так как сеть без полносвязных слоев полностью
+            свёрточная, она может обрабатывать изображения любого размера,
+            поэтому масштабирование может быть не обязательным
         normalize_input : bool
-            If true, scales the input from range (0, 1) to the range the
-            pretrained Inception network expects, namely (-1, 1)
+            Если True, масштабирует вход из диапазона (0, 1) в диапазон, ожидаемый
+            предобученной сетью Inception (-1, 1)
         requires_grad : bool
-            If true, parameters of the model require gradients. Possibly useful
-            for finetuning the network
+            Если True, параметры модели требуют вычисления градиентов. Полезно для
+            дообучения сети
         use_fid_inception : bool
-            If true, uses the pretrained Inception model used in Tensorflow's
-            FID implementation. If false, uses the pretrained Inception model
-            available in torchvision. The FID Inception model has different
-            weights and a slightly different structure from torchvision's
-            Inception model. If you want to compute FID scores, you are
-            strongly advised to set this parameter to true to get comparable
-            results.
+            Если True, использует предобученную модель Inception из реализации FID
+            в TensorFlow. Если False, использует стандартную предобученную модель
+            из torchvision. Модель для FID имеет другие веса и немного другую
+            архитектуру. Для вычисления FID-метрики рекомендуется установить True,
+            чтобы получить сравнимые результаты.
         """
-        super(InceptionV3, self).__init__()
+        super().__init__()
 
         self.resize_input = resize_input
         self.normalize_input = normalize_input
         self.output_blocks = sorted(output_blocks)
         self.last_needed_block = max(output_blocks)
 
-        assert self.last_needed_block <= 3, "Last possible output block index is 3"
+        assert self.last_needed_block <= 3, "Максимальный возможный индекс выходного блока - 3"
 
         self.blocks = nn.ModuleList()
 
@@ -82,7 +79,7 @@ class InceptionV3(nn.Module):
         else:
             inception = _inception_v3(weights="DEFAULT")
 
-        # Block 0: input to maxpool1
+        # Блок 0: от входа до первого maxpool1
         block0 = [
             inception.Conv2d_1a_3x3,
             inception.Conv2d_2a_3x3,
@@ -91,7 +88,7 @@ class InceptionV3(nn.Module):
         ]
         self.blocks.append(nn.Sequential(*block0))
 
-        # Block 1: maxpool1 to maxpool2
+        # Блок 1: от maxpool1 до maxpool2
         if self.last_needed_block >= 1:
             block1 = [
                 inception.Conv2d_3b_1x1,
@@ -100,7 +97,7 @@ class InceptionV3(nn.Module):
             ]
             self.blocks.append(nn.Sequential(*block1))
 
-        # Block 2: maxpool2 to aux classifier
+        # Блок 2: от maxpool2 до вспомогательного классификатора
         if self.last_needed_block >= 2:
             block2 = [
                 inception.Mixed_5b,
@@ -114,7 +111,7 @@ class InceptionV3(nn.Module):
             ]
             self.blocks.append(nn.Sequential(*block2))
 
-        # Block 3: aux classifier to final avgpool
+        # Блок 3: от вспомогательного классификатора до финального avgpool
         if self.last_needed_block >= 3:
             block3 = [
                 inception.Mixed_7a,
@@ -128,18 +125,18 @@ class InceptionV3(nn.Module):
             param.requires_grad = requires_grad
 
     def forward(self, inp):
-        """Get Inception feature maps
+        """Получить карты признаков Inception
 
-        Parameters
+        Параметры
         ----------
-        inp : torch.autograd.Variable
-            Input tensor of shape Bx3xHxW. Values are expected to be in
-            range (0, 1)
+        inp : torch.Tensor
+            Входной тензор размерности Bx3xHxW. Ожидаются значения в диапазоне (0, 1)
 
-        Returns
+        Возвращает
         -------
-        List of torch.autograd.Variable, corresponding to the selected output
-        block, sorted ascending by index
+        List[torch.Tensor]
+            Список тензоров с картами признаков выбранных блоков,
+            отсортированный по возрастанию индекса
         """
         outp = []
         x = inp
@@ -148,7 +145,7 @@ class InceptionV3(nn.Module):
             x = F.interpolate(x, size=(299, 299), mode="bilinear", align_corners=False)
 
         if self.normalize_input:
-            x = 2 * x - 1  # Scale from range (0, 1) to range (-1, 1)
+            x = 2 * x - 1  # Масштабирование из (0, 1) в (-1, 1)
 
         for idx, block in enumerate(self.blocks):
             x = block(x)
@@ -162,20 +159,20 @@ class InceptionV3(nn.Module):
 
 
 def _inception_v3(*args, **kwargs):
-    """Wraps `torchvision.models.inception_v3`"""
+    """Обёртка для `torchvision.models.inception_v3`"""
     try:
         version = tuple(map(int, torchvision.__version__.split(".")[:2]))
     except ValueError:
-        # Just a caution against weird version strings
+        # Защита от нестандартных строк версии
         version = (0,)
 
-    # Skips default weight inititialization if supported by torchvision
-    # version. See https://github.com/mseitzer/pytorch-fid/issues/28.
+    # Пропуск инициализации весов по умолчанию, если поддерживается версией torchvision
+    # См. https://github.com/mseitzer/pytorch-fid/issues/28.
     if version >= (0, 6):
         kwargs["init_weights"] = False
 
-    # Backwards compatibility: `weights` argument was handled by `pretrained`
-    # argument prior to version 0.13.
+    # Обратная совместимость: аргумент `weights` обрабатывался через `pretrained`
+    # в версиях до 0.13.
     if version < (0, 13) and "weights" in kwargs:
         if kwargs["weights"] == "DEFAULT":
             kwargs["pretrained"] = True
@@ -183,9 +180,7 @@ def _inception_v3(*args, **kwargs):
             kwargs["pretrained"] = False
         else:
             raise ValueError(
-                "weights=={} not supported in torchvision {}".format(
-                    kwargs["weights"], torchvision.__version__
-                )
+                f"weights=={kwargs['weights']} не поддерживается в torchvision {torchvision.__version__}"
             )
         del kwargs["weights"]
 
@@ -193,13 +188,13 @@ def _inception_v3(*args, **kwargs):
 
 
 def fid_inception_v3():
-    """Build pretrained Inception model for FID computation
+    """Создание предобученной модели Inception для вычисления FID
 
-    The Inception model for FID computation uses a different set of weights
-    and has a slightly different structure than torchvision's Inception.
+    Модель Inception для FID использует другие веса и немного отличается
+    от стандартной Inception из torchvision.
 
-    This method first constructs torchvision's Inception and then patches the
-    necessary parts that are different in the FID Inception model.
+    Этот метод сначала создаёт стандартную Inception, а затем заменяет
+    необходимые части, которые отличаются в модели для FID.
     """
     inception = _inception_v3(num_classes=1008, aux_logits=False, weights=None)
     inception.Mixed_5b = FIDInceptionA(192, pool_features=32)
@@ -218,10 +213,10 @@ def fid_inception_v3():
 
 
 class FIDInceptionA(torchvision.models.inception.InceptionA):
-    """InceptionA block patched for FID computation"""
+    """Блок InceptionA с изменениями для вычисления FID"""
 
     def __init__(self, in_channels, pool_features):
-        super(FIDInceptionA, self).__init__(in_channels, pool_features)
+        super().__init__(in_channels, pool_features)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
@@ -233,8 +228,7 @@ class FIDInceptionA(torchvision.models.inception.InceptionA):
         branch3x3dbl = self.branch3x3dbl_2(branch3x3dbl)
         branch3x3dbl = self.branch3x3dbl_3(branch3x3dbl)
 
-        # Patch: Tensorflow's average pool does not use the padded zero's in
-        # its average calculation
+        # Изменение: avg_pool2d в TensorFlow не учитывает нули добавленные padding'ом
         branch_pool = F.avg_pool2d(
             x, kernel_size=3, stride=1, padding=1, count_include_pad=False
         )
@@ -245,10 +239,10 @@ class FIDInceptionA(torchvision.models.inception.InceptionA):
 
 
 class FIDInceptionC(torchvision.models.inception.InceptionC):
-    """InceptionC block patched for FID computation"""
+    """Блок InceptionC с изменениями для вычисления FID"""
 
     def __init__(self, in_channels, channels_7x7):
-        super(FIDInceptionC, self).__init__(in_channels, channels_7x7)
+        super().__init__(in_channels, channels_7x7)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
@@ -263,8 +257,7 @@ class FIDInceptionC(torchvision.models.inception.InceptionC):
         branch7x7dbl = self.branch7x7dbl_4(branch7x7dbl)
         branch7x7dbl = self.branch7x7dbl_5(branch7x7dbl)
 
-        # Patch: Tensorflow's average pool does not use the padded zero's in
-        # its average calculation
+        # Изменение: avg_pool2d в TensorFlow не учитывает нули добавленные padding'ом
         branch_pool = F.avg_pool2d(
             x, kernel_size=3, stride=1, padding=1, count_include_pad=False
         )
@@ -275,10 +268,10 @@ class FIDInceptionC(torchvision.models.inception.InceptionC):
 
 
 class FIDInceptionE_1(torchvision.models.inception.InceptionE):
-    """First InceptionE block patched for FID computation"""
+    """Первый блок InceptionE с изменениями для вычисления FID"""
 
     def __init__(self, in_channels):
-        super(FIDInceptionE_1, self).__init__(in_channels)
+        super().__init__(in_channels)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
@@ -298,8 +291,7 @@ class FIDInceptionE_1(torchvision.models.inception.InceptionE):
         ]
         branch3x3dbl = torch.cat(branch3x3dbl, 1)
 
-        # Patch: Tensorflow's average pool does not use the padded zero's in
-        # its average calculation
+        # Изменение: avg_pool2d в TensorFlow не учитывает нули добавленные padding'ом
         branch_pool = F.avg_pool2d(
             x, kernel_size=3, stride=1, padding=1, count_include_pad=False
         )
@@ -310,10 +302,10 @@ class FIDInceptionE_1(torchvision.models.inception.InceptionE):
 
 
 class FIDInceptionE_2(torchvision.models.inception.InceptionE):
-    """Second InceptionE block patched for FID computation"""
+    """Второй блок InceptionE с изменениями для вычисления FID"""
 
     def __init__(self, in_channels):
-        super(FIDInceptionE_2, self).__init__(in_channels)
+        super().__init__(in_channels)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
@@ -333,10 +325,9 @@ class FIDInceptionE_2(torchvision.models.inception.InceptionE):
         ]
         branch3x3dbl = torch.cat(branch3x3dbl, 1)
 
-        # Patch: The FID Inception model uses max pooling instead of average
-        # pooling. This is likely an error in this specific Inception
-        # implementation, as other Inception models use average pooling here
-        # (which matches the description in the paper).
+        # Изменение: В модели FID используется max pooling вместо average pooling.
+        # Вероятно, это ошибка в данной реализации Inception, так как в других
+        # реализациях Inception используется average pooling (как и описано в статье).
         branch_pool = F.max_pool2d(x, kernel_size=3, stride=1, padding=1)
         branch_pool = self.branch_pool(branch_pool)
 
